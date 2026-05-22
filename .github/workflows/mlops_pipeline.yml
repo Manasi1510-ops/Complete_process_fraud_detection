@@ -104,9 +104,9 @@ jobs:
           docker login --username AWS --password-stdin \
           ${{ secrets.ECR_REGISTRY }}
 
-      - name: Step 6 — Build Docker image
-        run: |
-          docker build -t ${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} .
+      - - name: Step 6 — Build Docker image
+  run: |
+    docker build -t ${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} .
 
       - name: Step 7 — Tag and push to ECR
         run: |
