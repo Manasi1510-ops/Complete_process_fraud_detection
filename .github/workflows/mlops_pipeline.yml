@@ -17,38 +17,38 @@ jobs:
   # JOB 1 — TEST
   # =====================================================
   test:
-    name: Install, Train and Test
+    name: Install Train and Test
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Step 1 — Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Step 2 — Setup Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Step 3 — Install dependencies
+      - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Step 4 — Generate dataset
+      - name: Generate dataset
         run: |
           cd src
           python generate_data.py
 
-      - name: Step 5 — Train model
+      - name: Train model
         run: |
           cd src
           python train.py
 
-      - name: Step 6 — Run tests
+      - name: Run tests
         run: |
           pytest tests/test_model.py -v
 
-      - name: Step 7 — Verify model exists
+      - name: Verify model exists
         run: |
           ls models/
 
@@ -62,33 +62,31 @@ jobs:
 
     steps:
 
-      - name: Step 1 — Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Step 2 — Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Step 3 — Login to Amazon ECR
+      - name: Login to Amazon ECR
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-      - name: Step 4 — Build Docker image
+      - name: Build Docker image
         run: |
           docker build -t fraud-detection:${{ github.sha }} .
 
-      -  name: Step 5 — Tag Docker image
-  run: |
-    docker tag fraud-detection:${{ github.sha }} \
-    ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+      - name: Tag Docker image
+        run: |
+          docker tag fraud-detection:${{ github.sha }} ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
 
-    docker tag fraud-detection:${{ github.sha }} \
-    ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+          docker tag fraud-detection:${{ github.sha }} ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
 
-      - name: Step 6 — Push image to ECR
+      - name: Push image to ECR
         run: |
           docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
 
@@ -104,34 +102,34 @@ jobs:
 
     steps:
 
-      - name: Step 1 — Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Step 2 — Configure AWS credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Step 3 — Connect to EKS cluster
+      - name: Configure kubectl for EKS
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-      - name: Step 4 — Check deployments
+      - name: Check deployments
         run: |
           kubectl get deployments
 
-      - name: Step 5 — Update deployment image
+      - name: Update deployment image
         run: |
           kubectl set image deployment/fraud-detection fraud-app=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
 
-      - name: Step 6 — Wait for rollout
+      - name: Wait for rollout
         run: |
           kubectl rollout status deployment/fraud-detection --timeout=5m
 
-      - name: Step 7 — Get service URL
+      - name: Get services
         run: |
           kubectl get services
