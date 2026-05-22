@@ -1,144 +1,107 @@
-# .github/workflows/mlops_pipeline.yml
-#
-# COMPLETE CI/CD PIPELINE — Fraud Detection
-# ==========================================
-# Triggers automatically on every git push to main
-#
-# What this pipeline does:
-#   JOB 1 — Test:          Install Python, train model, run all 8 tests
-#   JOB 2 — Build & Push:  Build Docker image, push to Amazon ECR
-#   JOB 3 — Deploy:        Deploy new image to Amazon EKS
-#
-# GitHub Secrets required (Settings → Secrets → Actions):
-#   AWS_ACCESS_KEY_ID        → your IAM user access key
-#   AWS_SECRET_ACCESS_KEY    → your IAM user secret key
-#   AWS_REGION               → ap-south-1
-#   ECR_REGISTRY             → 123456789012.dkr.ecr.ap-south-1.amazonaws.com
-#   ECR_REPOSITORY           → fraud-detection
-#   EKS_CLUSTER_NAME         → fraud-detection-cluster
-
 name: MLOps CI/CD Pipeline
 
 on:
   push:
-    branches: [main]         # triggers on every git push to main
+    branches:
+      - main
+
   pull_request:
-    branches: [main]         # triggers when PR is opened to main
-  workflow_dispatch:          # manual trigger from GitHub Actions UI
+    branches:
+      - main
+
+  workflow_dispatch:
 
 jobs:
 
-  # ══════════════════════════════════════════════════════
+  # =====================================================
   # JOB 1 — TEST
-  # Install Python, train model, run all 8 pytest tests
-  # If any test fails → pipeline stops → nothing deploys
-  # ══════════════════════════════════════════════════════
+  # =====================================================
   test:
     name: Install, Train and Test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Step 1 — Checkout code from GitHub
-        uses: actions/checkout@v4
 
-      - name: Step 2 — Install Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Step 3 — Install all libraries
-        run: pip install -r requirements.txt
-
-      - name: Step 4 — Generate sample transaction data
-        run: |
-          cd src
-          python generate_data.py
-          cd ..
-
-      - name: Step 5 — Train the fraud detection model
-        run: |
-          cd src
-          python train.py
-          cd ..
-
-      - name: Step 6 — Run all 8 pytest tests
-        run: pytest tests/test_model.py -v
-
-      - name: Step 7 — Confirm model file was created
-        run: ls models/
-
-  # ══════════════════════════════════════════════════════
-  # JOB 2 — BUILD AND PUSH TO ECR
-  # Only runs if Job 1 (test) passes
-  # Builds Docker image and pushes to Amazon ECR
-  # ══════════════════════════════════════════════════════
-  build-and-push:
-    name: Build Docker Image and Push to ECR
-    runs-on: ubuntu-latest
-    needs: test                # only runs if test job passes ✅
-
-    steps:
       - name: Step 1 — Checkout code
         uses: actions/checkout@v4
 
-      - name: Step 2 — Install Python and retrain model
+      - name: Step 2 — Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - name: Step 3 — Install libraries and train
+      - name: Step 3 — Install dependencies
         run: |
           pip install -r requirements.txt
-          cd src && python generate_data.py && python train.py && cd ..
 
-      - name: Step 4 — Configure AWS credentials
+      - name: Step 4 — Generate dataset
+        run: |
+          cd src
+          python generate_data.py
+
+      - name: Step 5 — Train model
+        run: |
+          cd src
+          python train.py
+
+      - name: Step 6 — Run tests
+        run: |
+          pytest tests/test_model.py -v
+
+      - name: Step 7 — Verify model exists
+        run: |
+          ls models/
+
+  # =====================================================
+  # JOB 2 — BUILD AND PUSH TO ECR
+  # =====================================================
+  build-and-push:
+    name: Build Docker Image and Push to ECR
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+
+      - name: Step 1 — Checkout code
+        uses: actions/checkout@v4
+
+      - name: Step 2 — Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Step 5 — Login to Amazon ECR
+      - name: Step 3 — Login to Amazon ECR
         run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin \
-          ${{ secrets.ECR_REGISTRY }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-      - - name: Step 6 — Build Docker image
-  run: |
-    docker build -t ${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} .
-
-      - name: Step 7 — Tag and push to ECR
+      - name: Step 4 — Build Docker image
         run: |
-          docker tag ${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
-            ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-          docker tag ${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
-            ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+          docker build -t fraud-detection:${{ github.sha }} .
+
+      - name: Step 5 — Tag Docker image
+        run: |
+          docker tag fraud-detection:${{ github.sha }} ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+
+          docker tag fraud-detection:${{ github.sha }} ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Step 6 — Push image to ECR
+        run: |
           docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+
           docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
 
-      - name: Step 8 — Confirm push success
-        run: |
-          echo "============================================"
-          echo "  Image pushed to ECR successfully!"
-          echo "  Registry : ${{ secrets.ECR_REGISTRY }}"
-          echo "  Repo     : ${{ secrets.ECR_REPOSITORY }}"
-          echo "  Tag      : ${{ github.sha }}"
-          echo "  By       : ${{ github.actor }}"
-          echo "============================================"
-
-  # ══════════════════════════════════════════════════════
+  # =====================================================
   # JOB 3 — DEPLOY TO EKS
-  # Only runs if Job 2 (build-and-push) passes
-  # Updates the running containers on EKS with new image
-  # Users see the new model automatically — zero downtime
-  # ══════════════════════════════════════════════════════
+  # =====================================================
   deploy:
     name: Deploy to AWS EKS
     runs-on: ubuntu-latest
-    needs: build-and-push      # only runs if build job passes ✅
+    needs: build-and-push
 
     steps:
+
       - name: Step 1 — Checkout code
         uses: actions/checkout@v4
 
@@ -155,16 +118,18 @@ jobs:
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-      - name: Step 4 — Update deployment with new image
+      - name: Step 4 — Check deployments
         run: |
-          kubectl set image deployment/fraud-detection \
-            fraud-app=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+          kubectl get deployments
 
-      - name: Step 5 — Wait for rollout to complete
+      - name: Step 5 — Update deployment image
+        run: |
+          kubectl set image deployment/fraud-detection fraud-app=${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Step 6 — Wait for rollout
         run: |
           kubectl rollout status deployment/fraud-detection --timeout=5m
 
-      - name: Step 6 — Get app public URL
+      - name: Step 7 — Get service URL
         run: |
-          echo "App is live at:"
-          kubectl get service fraud-detection-service
+          kubectl get services
