@@ -126,9 +126,21 @@ jobs:
         run: |
           kubectl set image deployment/fraud-detection fraud-app=926028309952.dkr.ecr.ap-south-1.amazonaws.com/fraud-detection-completeprocess:${{ github.sha }}
 
-      - name: Wait for rollout
+            - name: Wait for rollout
         run: |
           kubectl rollout status deployment/fraud-detection --timeout=5m
+
+      - name: Debug Pods
+        if: failure()
+        run: |
+          echo "===== PODS ====="
+          kubectl get pods
+
+          echo "===== DESCRIBE POD ====="
+          kubectl describe pods
+
+          echo "===== POD LOGS ====="
+          kubectl logs -l app=fraud-detection --tail=100
 
       - name: Get services
         run: |
